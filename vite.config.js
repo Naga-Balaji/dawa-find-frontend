@@ -5,8 +5,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Point at a sandbox backend with: API_PROXY=http://localhost:5055 npm run dev
     proxy: {
-      '/api': 'http://localhost:5000',
+      '/api': process.env.API_PROXY || 'http://localhost:5000',
     },
   },
 });

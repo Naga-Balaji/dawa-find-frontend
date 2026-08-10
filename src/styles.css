@@ -678,3 +678,90 @@ body {
   .shops { padding: 40px 20px 10px; }
   .stats { gap: 20px; }
 }
+
+/* ============ Partner / Admin console ============ */
+.partner { max-width: 1100px; padding-bottom: 60px; }
+.partner-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 20px; flex-wrap: wrap; margin: 28px 0 20px;
+}
+.partner-head h2 { margin: 0 0 4px; font-size: 28px; letter-spacing: -0.5px; }
+.partner-head .muted { margin: 0; }
+.board-actions { display: flex; gap: 10px; }
+
+/* -------- Notices -------- */
+.notice {
+  border: 1px solid #e2e8f0; border-left: 4px solid #94a3b8;
+  background: #fff; border-radius: 10px;
+  padding: 14px 16px; margin: 0 0 16px;
+}
+.notice p { margin: 4px 0 0; font-size: 14px; color: #475569; }
+.notice.green { border-left-color: #10b981; background: #f0fdf4; }
+.notice.amber { border-left-color: #f59e0b; background: #fffbeb; }
+.notice.error { border-left-color: #dc2626; background: #fef2f2; }
+.notice code {
+  background: #e2e8f0; padding: 1px 6px; border-radius: 4px; font-size: 13px;
+}
+.dupe-list { margin: 8px 0 0; padding-left: 18px; font-size: 14px; color: #475569; }
+
+/* -------- Role picker on register -------- */
+.role-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0 20px; }
+.role-opt {
+  display: flex; flex-direction: column; gap: 4px; text-align: left;
+  padding: 16px; border-radius: 12px; cursor: pointer;
+  border: 2px solid #e2e8f0; background: #fff; font: inherit; color: #0f172a;
+  transition: border-color .15s, background .15s;
+}
+.role-opt:hover { border-color: #94a3b8; }
+.role-opt.on { border-color: #0f766e; background: #f0fdfa; }
+.role-opt span { font-size: 13px; color: #64748b; }
+
+/* -------- Shop location picker -------- */
+.partner-form { max-width: none; }
+.partner-form label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; font-size: 14px; }
+.partner-form label input { font-weight: 400; }
+.partner-form .small { font-weight: 400; }
+.picker { margin: 8px 0; }
+.picker-label { display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 14px; margin-bottom: 6px; }
+.picker-label code { background: #f1f5f9; padding: 2px 8px; border-radius: 6px; font-size: 12px; color: #0f766e; }
+.picker-map { height: 320px; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0; }
+.picker-map .leaflet-container { height: 100%; width: 100%; }
+
+/* -------- Stock board -------- */
+.board-bar {
+  display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  margin: 18px 0; padding: 14px; background: #fff;
+  border: 1px solid #e2e8f0; border-radius: 12px;
+}
+.board-bar .inv-search { flex: 1; min-width: 220px; }
+.filter-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.filter-chips .chip { text-transform: capitalize; }
+.filter-chips .chip.active { background: #0f766e; color: #fff; border-color: #0f766e; }
+
+.board-table tr.dirty { background: #fffbeb; }
+.board-table td { vertical-align: middle; }
+.cell-input {
+  width: 78px; padding: 6px 8px; border: 1px solid #cbd5e1;
+  border-radius: 8px; font: inherit;
+}
+.cell-input:disabled { background: #f1f5f9; color: #94a3b8; }
+
+.seg { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden; }
+.seg-btn {
+  border: 0; background: #fff; font: inherit; font-size: 13px;
+  padding: 6px 12px; cursor: pointer; color: #475569;
+  border-right: 1px solid #e2e8f0;
+}
+.seg-btn:last-child { border-right: 0; }
+.seg-btn:disabled { cursor: not-allowed; opacity: .55; }
+.seg-btn.on.ok { background: #10b981; color: #fff; }
+.seg-btn.on.low { background: #dc2626; color: #fff; }
+.seg-btn.on.unk { background: #94a3b8; color: #fff; }
+
+.row-actions { display: flex; gap: 8px; white-space: nowrap; }
+.meta-chip.red { background: #fef2f2; color: #b91c1c; }
+
+@media (max-width: 760px) {
+  .role-toggle { grid-template-columns: 1fr; }
+  .partner-head { flex-direction: column; }
+}

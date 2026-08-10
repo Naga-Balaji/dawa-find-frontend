@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../api/client.js';
+import { setSession, homeFor } from '../auth.js';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -13,9 +14,9 @@ export default function Login() {
     setError('');
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-      navigate('/');
+      setSession(data.token, data.user);
+      // Partners and admins land on their own console, customers on the map.
+      navigate(homeFor(data.user));
     } catch (err) {
       setError(err.response?.data?.message || err.message);
     }
