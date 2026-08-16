@@ -765,3 +765,122 @@ body {
   .role-toggle { grid-template-columns: 1fr; }
   .partner-head { flex-direction: column; }
 }
+
+/* -------- AI prescription scan -------- */
+.rx-page { max-width: 1280px; margin: 0 auto; padding: 40px 48px 20px; }
+.rx-head { max-width: 720px; margin-bottom: 32px; }
+.rx-head h1 {
+  font-size: clamp(28px, 3.4vw, 44px); line-height: 1.1;
+  margin: 16px 0 14px; letter-spacing: -1.2px; font-weight: 800;
+}
+.rx-head .accent { color: #0f766e; }
+.rx-head .lead { color: #475569; font-size: 17px; margin: 0; }
+
+.rx-grid { display: grid; grid-template-columns: 380px 1fr; gap: 32px; align-items: start; }
+
+/* Upload panel */
+.rx-upload { position: sticky; top: 84px; display: flex; flex-direction: column; gap: 14px; }
+.rx-drop {
+  border: 2px dashed #cbd5e1; border-radius: 14px; background: #fff;
+  min-height: 240px; padding: 24px; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; text-align: center; color: #475569;
+  transition: border-color .15s, background .15s;
+}
+.rx-drop:hover { border-color: #0f766e; background: #f0fdfa; }
+.rx-drop.has-image { padding: 8px; cursor: default; border-style: solid; }
+.rx-drop img { max-width: 100%; max-height: 420px; border-radius: 8px; display: block; }
+.rx-drop-icon { font-size: 40px; }
+.rx-drop .small { color: #64748b; font-size: 13px; }
+
+.rx-filename {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; margin: 0; font-size: 13px; color: #64748b;
+}
+.link-btn {
+  border: 0; background: none; padding: 0; cursor: pointer;
+  font: inherit; color: #0f766e; font-weight: 600; text-decoration: underline;
+}
+.rx-analyse { width: 100%; }
+.rx-analyse:disabled { background: #94a3b8; cursor: not-allowed; transform: none; }
+.rx-upload .quick-actions { margin: 4px 0; }
+
+/* Results panel */
+.rx-results { display: flex; flex-direction: column; gap: 16px; min-height: 300px; }
+.rx-summary {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 18px;
+}
+.rx-summary div { display: flex; flex-direction: column; }
+.rx-summary strong { font-size: 24px; color: #0f766e; letter-spacing: -0.5px; }
+.rx-summary span { font-size: 13px; color: #64748b; }
+.rx-meta { margin: 0; font-size: 14px; }
+
+.rx-card {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 18px; display: flex; flex-direction: column; gap: 12px;
+}
+.rx-card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.rx-card-head h3 { margin: 0; font-size: 18px; letter-spacing: -0.3px; }
+.rx-strength { color: #64748b; font-weight: 500; }
+.rx-brand { margin: 4px 0 0; font-size: 13px; color: #64748b; }
+
+.rx-conf {
+  flex-shrink: 0; padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.rx-conf.high { background: #dcfce7; color: #15803d; }
+.rx-conf.medium { background: #fef3c7; color: #b45309; }
+.rx-conf.low { background: #fee2e2; color: #b91c1c; }
+
+.rx-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rx-chips .meta-chip,
+.rx-matched .meta-chip {
+  background: #f1f5f9; color: #334155; padding: 4px 10px;
+  border-radius: 999px; font-size: 12px; font-weight: 500;
+}
+.rx-info { border-top: 1px solid #f1f5f9; padding-top: 12px; }
+.rx-matched { margin: 0; font-size: 14px; color: #334155; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rx-matched code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 12px; color: #0f766e; }
+.rx-desc { margin: 6px 0 0; font-size: 13px; color: #64748b; }
+
+.rx-price-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; }
+.rx-price { display: flex; flex-direction: column; gap: 2px; }
+.rx-price-label { font-size: 12px; color: #64748b; }
+.rx-price strong { font-size: 26px; color: #0f172a; letter-spacing: -1px; }
+.rx-save { font-size: 12px; color: #94a3b8; text-decoration: line-through; }
+.rx-stock { font-size: 13px; font-weight: 600; }
+.rx-stock.ok { color: #15803d; }
+.rx-stock.none { color: #94a3b8; }
+
+.rx-offers { list-style: none; margin: 0; padding: 10px 0 0; border-top: 1px solid #f1f5f9; }
+.rx-offers li {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 0; font-size: 14px; border-bottom: 1px solid #f8fafc;
+}
+.rx-offers li:last-child { border-bottom: 0; }
+.rx-offers a { color: #0f172a; text-decoration: none; font-weight: 500; }
+.rx-offers a:hover { color: #0f766e; }
+.rx-offer-price { margin-left: auto; font-weight: 700; color: #0f766e; }
+.rx-offer-call { font-size: 12px; color: #0f766e !important; text-decoration: underline !important; }
+
+/* Loading placeholder */
+.rx-skeleton {
+  background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px;
+}
+.rx-skeleton p { margin: 0 0 14px; color: #64748b; font-size: 14px; }
+.rx-skeleton .bar {
+  height: 14px; border-radius: 6px; margin-bottom: 10px;
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%; animation: rx-shimmer 1.3s infinite;
+}
+.rx-skeleton .bar.short { width: 55%; margin-bottom: 0; }
+@keyframes rx-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+@media (max-width: 960px) {
+  .rx-page { padding: 28px 20px 16px; }
+  .rx-grid { grid-template-columns: 1fr; }
+  .rx-upload { position: static; }
+  .rx-summary { grid-template-columns: 1fr; gap: 8px; }
+  .rx-summary div { flex-direction: row; align-items: baseline; gap: 8px; }
+}
