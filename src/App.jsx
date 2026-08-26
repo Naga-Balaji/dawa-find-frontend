@@ -3,6 +3,7 @@ import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
 import Register from './pages/Register.jsx';
 import PharmacyDetail from './pages/PharmacyDetail.jsx';
+import Prescription from './pages/Prescription.jsx';
 import PartnerShop from './pages/PartnerShop.jsx';
 import PartnerInventory from './pages/PartnerInventory.jsx';
 import AdminPharmacies from './pages/AdminPharmacies.jsx';
@@ -29,6 +30,7 @@ function Navbar() {
       </Link>
       <div>
         <NavLink to="/">Map</NavLink>
+        <NavLink to="/prescription">Scan prescription</NavLink>
         {user?.role === 'pharmacy' && (
           <>
             <NavLink to="/partner">My shop</NavLink>
@@ -56,6 +58,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/pharmacy/:id" element={<PharmacyDetail />} />
+        <Route path="/prescription" element={<Prescription />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
 

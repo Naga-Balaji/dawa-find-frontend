@@ -37,7 +37,7 @@ export default function Footer() {
             <li><a href="/">Find medicine</a></li>
             <li><a href="/">Nearby pharmacies</a></li>
             <li><a href="/">Price comparison</a></li>
-            <li><a href="/">Coming: Prescription upload</a></li>
+            <li><a href="/prescription">AI prescription scan</a></li>
           </ul>
         </div>
 
