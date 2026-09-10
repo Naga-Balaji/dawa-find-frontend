@@ -5,6 +5,19 @@ import L from 'leaflet';
 import api from '../api/client.js';
 import Footer from '../components/Footer.jsx';
 
+// Build a wa.me deep link that opens WhatsApp with a pre-filled enquiry.
+// `phone` is stored as "+91 98xxxxxxxx" — wa.me needs digits only, with country code.
+function waLink(phone, medicine) {
+  if (!phone) return null;
+  const digits = String(phone).replace(/\D/g, '');
+  if (!digits) return null;
+  const withCc = digits.length === 10 ? `91${digits}` : digits;
+  const msg = medicine?.trim()
+    ? `Hi, do you have *${medicine.trim()}* in stock? — via Dawa-Find`
+    : `Hi, I'm checking medicine availability — via Dawa-Find`;
+  return `https://wa.me/${withCc}?text=${encodeURIComponent(msg)}`;
+}
+
 // Fix default Leaflet marker icons for bundlers
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -161,6 +174,14 @@ export default function Home() {
                     {p.rating && <span>⭐ {p.rating} ({p.ratingCount || 0})</span>}
                     <br />
                     <Link to={`/pharmacy/${p._id}`}>View shop & inventory →</Link>
+                    {waLink(p.phone, medicine) && (
+                      <>
+                        <br />
+                        <a href={waLink(p.phone, medicine)} target="_blank" rel="noreferrer">
+                          💬 Ask on WhatsApp
+                        </a>
+                      </>
+                    )}
                     {p.mapsLink && (
                       <>
                         <br />
@@ -214,6 +235,17 @@ export default function Home() {
                   {p.hours && <p className="shop-hours">🕒 {p.hours}</p>}
                   <div className="shop-actions">
                     <Link className="btn primary small" to={`/pharmacy/${p._id}`}>Explore →</Link>
+                    {waLink(p.phone, medicine) && (
+                      <a
+                        className="btn primary small"
+                        style={{ background: '#25D366', borderColor: '#25D366' }}
+                        href={waLink(p.phone, medicine)}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        💬 WhatsApp
+                      </a>
+                    )}
                     {p.phone && <a className="btn ghost" href={`tel:${p.phone.replace(/[^+\d]/g, '')}`}>📞 Call</a>}
                   </div>
                 </div>
