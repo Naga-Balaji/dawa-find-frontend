@@ -84,6 +84,37 @@ export default function Home() {
     finally { setLoading(false); }
   };
 
+  // Open WhatsApp for the single closest pharmacy (that has a phone).
+  // Distance is computed client-side from the current map center using the
+  // haversine formula so we don't depend on the backend sort order.
+  const askNearestOnWhatsApp = () => {
+    const [lat, lon] = center;
+    const toRad = (d) => (d * Math.PI) / 180;
+    const distKm = (a, b, c, d) => {
+      const R = 6371;
+      const dLat = toRad(c - a);
+      const dLon = toRad(d - b);
+      const s = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(a)) * Math.cos(toRad(c)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(s));
+    };
+    const withPhone = pharmacies
+      .filter((p) => p.phone && p.location?.coordinates)
+      .map((p) => {
+        const [plon, plat] = p.location.coordinates;
+        return { p, km: distKm(lat, lon, plat, plon) };
+      })
+      .sort((a, b) => a.km - b.km);
+
+    if (!withPhone.length) {
+      setError('No pharmacies with a phone number in the current results.');
+      return;
+    }
+    const nearest = withPhone[0];
+    setError('');
+    window.open(waLink(nearest.p.phone, medicine), '_blank', 'noopener');
+  };
+
   const findMedicine = async (e) => {
     e?.preventDefault?.();
     if (!medicine.trim()) return;
@@ -122,6 +153,15 @@ export default function Home() {
               onChange={(e) => setMedicine(e.target.value)}
             />
             <button className="btn primary" type="submit">Search</button>
+            <button
+              type="button"
+              className="btn primary"
+              style={{ background: '#25D366', borderColor: '#25D366' }}
+              title="Open WhatsApp for the nearest pharmacy in the results"
+              onClick={() => askNearestOnWhatsApp()}
+            >
+              💬 Ask nearest
+            </button>
           </form>
 
           <div className="quick-actions">
