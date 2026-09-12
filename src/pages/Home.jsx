@@ -1,244 +1,1086 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, Circle, useMap } from 'react-leaflet';
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Circle,
+  useMap,
+} from 'react-leaflet';
 import L from 'leaflet';
 import api from '../api/client.js';
 import Footer from '../components/Footer.jsx';
 
-// Build a wa.me deep link that opens WhatsApp with a pre-filled enquiry.
-// `phone` is stored as "+91 98xxxxxxxx" — wa.me needs digits only, with country code.
+// ============================================================
+// WHATSAPP LINK
+// ============================================================
+
 function waLink(phone, medicine) {
   if (!phone) return null;
+
   const digits = String(phone).replace(/\D/g, '');
+
   if (!digits) return null;
-  const withCc = digits.length === 10 ? `91${digits}` : digits;
+
+  const withCc =
+    digits.length === 10
+      ? `91${digits}`
+      : digits;
+
   const msg = medicine?.trim()
     ? `Hi, do you have *${medicine.trim()}* in stock? — via Dawa-Find`
     : `Hi, I'm checking medicine availability — via Dawa-Find`;
+
   return `https://wa.me/${withCc}?text=${encodeURIComponent(msg)}`;
 }
 
-// Fix default Leaflet marker icons for bundlers
+// ============================================================
+// LEAFLET ICON FIX
+// ============================================================
+
 delete L.Icon.Default.prototype._getIconUrl;
+
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconRetinaUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+
+  iconUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+
+  shadowUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-// Distinct green icon for the "you are here" marker
+// Green marker for user's location
 const userIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+  iconUrl:
+    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+
+  shadowUrl:
+    'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
   shadowSize: [41, 41],
 });
 
-const VIJAYAWADA = [16.5062, 80.6480];
-// Hard-coded test location (Benz Circle, Vijayawada) — used instead of
-// browser geolocation while developing so we don't drift out of the
-// seeded pharmacy area.
-const TEST_USER_LOCATION = [16.5045, 80.6540];
+// ============================================================
+// DEFAULT LOCATIONS
+// ============================================================
 
-function Recenter({ center, radius }) {
+const VIJAYAWADA = [16.5062, 80.6480];
+
+const TEST_USER_LOCATION = [
+  16.5045,
+  80.6540,
+];
+
+// ============================================================
+// SAFE API RESPONSE HELPERS
+// ============================================================
+
+// Backend responses may be:
+//
+// [
+//   { pharmacy }
+// ]
+//
+// or:
+//
+// {
+//   data: [...]
+// }
+//
+// or:
+//
+// {
+//   items: [...]
+// }
+//
+// or:
+//
+// {
+//   results: [...]
+// }
+//
+// This prevents:
+// TypeError: e.map is not a function
+function getArrayFromResponse(data) {
+  if (Array.isArray(data)) {
+    return data;
+  }
+
+  if (Array.isArray(data?.data)) {
+    return data.data;
+  }
+
+  if (Array.isArray(data?.items)) {
+    return data.items;
+  }
+
+  if (Array.isArray(data?.results)) {
+    return data.results;
+  }
+
+  if (Array.isArray(data?.pharmacies)) {
+    return data.pharmacies;
+  }
+
+  return [];
+}
+
+// Pharmacy-list endpoints should return pharmacies.
+// This normalizes the production response safely.
+function normalizePharmacies(data) {
+  const rows = getArrayFromResponse(data);
+
+  return rows.filter(
+    (item) =>
+      item &&
+      typeof item === 'object'
+  );
+}
+
+// Medicine search returns inventory rows containing:
+//
+// {
+//   pharmacy: {...}
+// }
+//
+// This extracts unique pharmacies safely.
+function extractPharmaciesFromMedicineResponse(data) {
+  const rows = getArrayFromResponse(data);
+
+  const pharmacies = rows
+    .map((row) => {
+      // Normal inventory response
+      if (row?.pharmacy) {
+        return row.pharmacy;
+      }
+
+      // If backend already returned pharmacies
+      if (
+        row?._id &&
+        row?.location
+      ) {
+        return row;
+      }
+
+      return null;
+    })
+    .filter(Boolean);
+
+  const seen = new Set();
+
+  return pharmacies.filter((pharmacy) => {
+    const id =
+      pharmacy?._id ||
+      pharmacy?.id;
+
+    if (!id) {
+      return false;
+    }
+
+    const key = String(id);
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+
+    return true;
+  });
+}
+
+// ============================================================
+// RECENTER MAP
+// ============================================================
+
+function Recenter({
+  center,
+  radius,
+}) {
   const map = useMap();
+
   useEffect(() => {
-    // Fit the map to the search-radius circle (bounding box = 2*radius square)
-    const bounds = L.latLng(center[0], center[1]).toBounds(radius * 2);
-    map.fitBounds(bounds, { padding: [30, 30] });
-  }, [center, radius, map]);
+    if (
+      !Array.isArray(center) ||
+      center.length < 2
+    ) {
+      return;
+    }
+
+    const lat = Number(center[0]);
+    const lon = Number(center[1]);
+    const safeRadius =
+      Number(radius) || 5000;
+
+    if (
+      !Number.isFinite(lat) ||
+      !Number.isFinite(lon)
+    ) {
+      return;
+    }
+
+    const bounds = L.latLng(
+      lat,
+      lon
+    ).toBounds(
+      safeRadius * 2
+    );
+
+    map.fitBounds(bounds, {
+      padding: [30, 30],
+    });
+  }, [
+    center,
+    radius,
+    map,
+  ]);
+
   return null;
 }
 
+// ============================================================
+// HOME PAGE
+// ============================================================
+
 export default function Home() {
-  const [pharmacies, setPharmacies] = useState([]);
-  const [medicine, setMedicine] = useState('');
-  const [center, setCenter] = useState(VIJAYAWADA);
-  const [radius, setRadius] = useState(5000); // metres
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [
+    pharmacies,
+    setPharmacies,
+  ] = useState([]);
+
+  const [
+    medicine,
+    setMedicine,
+  ] = useState('');
+
+  const [
+    center,
+    setCenter,
+  ] = useState(VIJAYAWADA);
+
+  const [
+    radius,
+    setRadius,
+  ] = useState(5000);
+
+  const [
+    error,
+    setError,
+  ] = useState('');
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  // ==========================================================
+  // LOAD ALL PHARMACIES
+  // ==========================================================
 
   useEffect(() => {
-    setLoading(true);
-    api.get('/pharmacies')
-      .then((r) => setPharmacies(r.data))
-      .catch((e) => setError(e.response?.data?.message || e.message))
-      .finally(() => setLoading(false));
+    let mounted = true;
+
+    const loadPharmacies = async () => {
+      try {
+        setLoading(true);
+        setError('');
+
+        const response =
+          await api.get(
+            '/pharmacies'
+          );
+
+        console.log(
+          'Pharmacies API response:',
+          response.data
+        );
+
+        const list =
+          normalizePharmacies(
+            response.data
+          );
+
+        if (mounted) {
+          setPharmacies(list);
+        }
+      } catch (err) {
+        console.error(
+          'Failed to load pharmacies:',
+          err.response?.data ||
+            err
+        );
+
+        if (mounted) {
+          setPharmacies([]);
+
+          setError(
+            err.response?.data
+              ?.message ||
+              err.message ||
+              'Unable to load pharmacies.'
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadPharmacies();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
+  // ==========================================================
+  // USE TEST LOCATION
+  // ==========================================================
+
   const useMyLocation = () => {
-    // TEST MODE: use hard-coded Vijayawada location instead of real geolocation.
     setError('');
-    setCenter(TEST_USER_LOCATION);
+
+    setCenter(
+      TEST_USER_LOCATION
+    );
   };
 
-  const findNearby = async () => {
-    try {
-      setLoading(true);
-      const [lat, lon] = center;
-      const r = await api.get('/pharmacies/nearby', { params: { lat, lon, radius } });
-      setPharmacies(r.data);
-    } catch (e) { setError(e.response?.data?.message || e.message); }
-    finally { setLoading(false); }
-  };
+  // ==========================================================
+  // FIND NEARBY PHARMACIES
+  // ==========================================================
 
-  // Open WhatsApp for the single closest pharmacy (that has a phone).
-  // Distance is computed client-side from the current map center using the
-  // haversine formula so we don't depend on the backend sort order.
-  const askNearestOnWhatsApp = () => {
-    const [lat, lon] = center;
-    const toRad = (d) => (d * Math.PI) / 180;
-    const distKm = (a, b, c, d) => {
-      const R = 6371;
-      const dLat = toRad(c - a);
-      const dLon = toRad(d - b);
-      const s = Math.sin(dLat / 2) ** 2 +
-        Math.cos(toRad(a)) * Math.cos(toRad(c)) * Math.sin(dLon / 2) ** 2;
-      return 2 * R * Math.asin(Math.sqrt(s));
+  const findNearby =
+    async () => {
+      try {
+        setLoading(true);
+        setError('');
+
+        const [
+          lat,
+          lon,
+        ] = center;
+
+        const response =
+          await api.get(
+            '/pharmacies/nearby',
+            {
+              params: {
+                lat,
+                lon,
+                radius,
+              },
+            }
+          );
+
+        console.log(
+          'Nearby pharmacies response:',
+          response.data
+        );
+
+        const list =
+          normalizePharmacies(
+            response.data
+          );
+
+        setPharmacies(list);
+
+        if (
+          list.length === 0
+        ) {
+          setError(
+            'No pharmacies found in this radius.'
+          );
+        }
+      } catch (err) {
+        console.error(
+          'Nearby pharmacy search failed:',
+          err.response?.data ||
+            err
+        );
+
+        setPharmacies([]);
+
+        setError(
+          err.response?.data
+            ?.message ||
+            err.message ||
+            'Unable to find nearby pharmacies.'
+        );
+      } finally {
+        setLoading(false);
+      }
     };
-    const withPhone = pharmacies
-      .filter((p) => p.phone && p.location?.coordinates)
-      .map((p) => {
-        const [plon, plat] = p.location.coordinates;
-        return { p, km: distKm(lat, lon, plat, plon) };
-      })
-      .sort((a, b) => a.km - b.km);
 
-    if (!withPhone.length) {
-      setError('No pharmacies with a phone number in the current results.');
-      return;
-    }
-    const nearest = withPhone[0];
-    setError('');
-    window.open(waLink(nearest.p.phone, medicine), '_blank', 'noopener');
-  };
+  // ==========================================================
+  // WHATSAPP NEAREST PHARMACY
+  // ==========================================================
 
-  const findMedicine = async (e) => {
-    e?.preventDefault?.();
-    if (!medicine.trim()) return;
-    try {
-      setLoading(true);
-      const [lat, lon] = center;
-      const r = await api.get('/pharmacies/medicines/nearby', {
-        params: { name: medicine, lat, lon, radius },
-      });
-      // response is inventory rows; extract pharmacies
-      const pharms = r.data.map((row) => row.pharmacy).filter(Boolean);
-      const seen = new Set();
-      const unique = pharms.filter((p) => (seen.has(p._id) ? false : seen.add(p._id)));
-      setPharmacies(unique);
-    } catch (e) { setError(e.response?.data?.message || e.message); }
-    finally { setLoading(false); }
-  };
+  const askNearestOnWhatsApp =
+    () => {
+      if (
+        !Array.isArray(
+          pharmacies
+        )
+      ) {
+        setError(
+          'Pharmacy data is unavailable.'
+        );
+
+        return;
+      }
+
+      const [
+        lat,
+        lon,
+      ] = center;
+
+      const toRad =
+        (degrees) =>
+          (degrees *
+            Math.PI) /
+          180;
+
+      const distKm = (
+        lat1,
+        lon1,
+        lat2,
+        lon2
+      ) => {
+        const R = 6371;
+
+        const dLat =
+          toRad(
+            lat2 - lat1
+          );
+
+        const dLon =
+          toRad(
+            lon2 - lon1
+          );
+
+        const s =
+          Math.sin(
+            dLat / 2
+          ) **
+            2 +
+          Math.cos(
+            toRad(lat1)
+          ) *
+            Math.cos(
+              toRad(lat2)
+            ) *
+            Math.sin(
+              dLon / 2
+            ) **
+              2;
+
+        return (
+          2 *
+          R *
+          Math.asin(
+            Math.sqrt(s)
+          )
+        );
+      };
+
+      const withPhone =
+        pharmacies
+          .filter(
+            (pharmacy) =>
+              pharmacy?.phone &&
+              Array.isArray(
+                pharmacy
+                  ?.location
+                  ?.coordinates
+              ) &&
+              pharmacy.location
+                .coordinates
+                .length >= 2
+          )
+          .map(
+            (pharmacy) => {
+              const [
+                pharmacyLon,
+                pharmacyLat,
+              ] =
+                pharmacy.location
+                  .coordinates;
+
+              return {
+                pharmacy,
+                km: distKm(
+                  lat,
+                  lon,
+                  pharmacyLat,
+                  pharmacyLon
+                ),
+              };
+            }
+          )
+          .sort(
+            (a, b) =>
+              a.km - b.km
+          );
+
+      if (
+        withPhone.length ===
+        0
+      ) {
+        setError(
+          'No pharmacies with a phone number in the current results.'
+        );
+
+        return;
+      }
+
+      const nearest =
+        withPhone[0]
+          .pharmacy;
+
+      const link = waLink(
+        nearest.phone,
+        medicine
+      );
+
+      if (!link) {
+        setError(
+          'This pharmacy does not have a valid WhatsApp number.'
+        );
+
+        return;
+      }
+
+      setError('');
+
+      window.open(
+        link,
+        '_blank',
+        'noopener,noreferrer'
+      );
+    };
+
+  // ==========================================================
+  // FIND MEDICINE
+  // ==========================================================
+
+  const findMedicine =
+    async (event) => {
+      event?.preventDefault?.();
+
+      const query =
+        medicine.trim();
+
+      if (!query) {
+        return;
+      }
+
+      try {
+        setLoading(true);
+        setError('');
+
+        const [
+          lat,
+          lon,
+        ] = center;
+
+        const response =
+          await api.get(
+            '/pharmacies/medicines/nearby',
+            {
+              params: {
+                name: query,
+                lat,
+                lon,
+                radius,
+              },
+            }
+          );
+
+        console.log(
+          'Medicine API response:',
+          response.data
+        );
+
+        const uniquePharmacies =
+          extractPharmaciesFromMedicineResponse(
+            response.data
+          );
+
+        setPharmacies(
+          uniquePharmacies
+        );
+
+        if (
+          uniquePharmacies.length ===
+          0
+        ) {
+          setError(
+            `No pharmacies found stocking "${query}".`
+          );
+        }
+      } catch (err) {
+        console.error(
+          'Medicine search failed:',
+          err.response?.data ||
+            err
+        );
+
+        setPharmacies([]);
+
+        setError(
+          err.response?.data
+            ?.message ||
+            err.message ||
+            'Unable to search for this medicine.'
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  // Always keep rendering safe
+  const safePharmacies =
+    Array.isArray(
+      pharmacies
+    )
+      ? pharmacies
+      : [];
+
+  // ==========================================================
+  // UI
+  // ==========================================================
 
   return (
     <main>
-      {/* ============ HERO ============ */}
+      {/* ================= HERO ================= */}
+
       <section className="hero">
         <div className="hero-left">
-          <span className="pill">🩺 Vijayawada · Live pharmacy directory</span>
-          <h1>Find the right <span className="accent">medicine</span>, near you.</h1>
+          <span className="pill">
+            🩺 Vijayawada · Live
+            pharmacy directory
+          </span>
+
+          <h1>
+            Find the right{' '}
+            <span className="accent">
+              medicine
+            </span>
+            , near you.
+          </h1>
+
           <p className="lead">
-            Search across nearby medical shops in seconds. See what's in stock,
-            compare prices, and get directions — all on one map.
+            Search across nearby
+            medical shops in
+            seconds. See what's in
+            stock, compare prices,
+            and get directions —
+            all on one map.
           </p>
 
-          <form className="search-bar" onSubmit={findMedicine}>
+          {/* SEARCH */}
+
+          <form
+            className="search-bar"
+            onSubmit={
+              findMedicine
+            }
+          >
             <input
               type="text"
               placeholder="e.g. Paracetamol, Azithromycin, ORS…"
               value={medicine}
-              onChange={(e) => setMedicine(e.target.value)}
+              onChange={(e) =>
+                setMedicine(
+                  e.target.value
+                )
+              }
             />
-            <button className="btn primary" type="submit">Search</button>
+
+            <button
+              className="btn primary"
+              type="submit"
+              disabled={loading}
+            >
+              {loading
+                ? 'Searching...'
+                : 'Search'}
+            </button>
+
             <button
               type="button"
               className="btn primary"
-              style={{ background: '#25D366', borderColor: '#25D366' }}
+              style={{
+                background:
+                  '#25D366',
+                borderColor:
+                  '#25D366',
+              }}
               title="Open WhatsApp for the nearest pharmacy in the results"
-              onClick={() => askNearestOnWhatsApp()}
+              onClick={
+                askNearestOnWhatsApp
+              }
             >
               💬 Ask nearest
             </button>
           </form>
 
+          {/* QUICK ACTIONS */}
+
           <div className="quick-actions">
-            <button className="chip" onClick={useMyLocation}>📍 Use my location</button>
-            <button className="chip" onClick={findNearby}>🏥 Nearby pharmacies</button>
+            <button
+              type="button"
+              className="chip"
+              onClick={
+                useMyLocation
+              }
+            >
+              📍 Use my location
+            </button>
+
+            <button
+              type="button"
+              className="chip"
+              onClick={
+                findNearby
+              }
+            >
+              🏥 Nearby pharmacies
+            </button>
+
             <label className="radius-select">
-              <span>Radius</span>
-              <select value={radius} onChange={(e) => setRadius(Number(e.target.value))}>
-                <option value={1000}>1 km</option>
-                <option value={2000}>2 km</option>
-                <option value={5000}>5 km</option>
-                <option value={10000}>10 km</option>
-                <option value={20000}>20 km</option>
-                <option value={50000}>50 km</option>
+              <span>
+                Radius
+              </span>
+
+              <select
+                value={radius}
+                onChange={(e) =>
+                  setRadius(
+                    Number(
+                      e.target
+                        .value
+                    )
+                  )
+                }
+              >
+                <option
+                  value={
+                    1000
+                  }
+                >
+                  1 km
+                </option>
+
+                <option
+                  value={
+                    2000
+                  }
+                >
+                  2 km
+                </option>
+
+                <option
+                  value={
+                    5000
+                  }
+                >
+                  5 km
+                </option>
+
+                <option
+                  value={
+                    10000
+                  }
+                >
+                  10 km
+                </option>
+
+                <option
+                  value={
+                    20000
+                  }
+                >
+                  20 km
+                </option>
+
+                <option
+                  value={
+                    50000
+                  }
+                >
+                  50 km
+                </option>
               </select>
             </label>
           </div>
 
+          {/* STATS */}
+
           <div className="stats">
-            <div><strong>{pharmacies.length}</strong><span>on map</span></div>
-            <div><strong>{radius / 1000} km</strong><span>search radius</span></div>
-            <div><strong>24/7</strong><span>updated</span></div>
+            <div>
+              <strong>
+                {
+                  safePharmacies.length
+                }
+              </strong>
+
+              <span>
+                on map
+              </span>
+            </div>
+
+            <div>
+              <strong>
+                {radius /
+                  1000}{' '}
+                km
+              </strong>
+
+              <span>
+                search radius
+              </span>
+            </div>
+
+            <div>
+              <strong>
+                24/7
+              </strong>
+
+              <span>
+                updated
+              </span>
+            </div>
           </div>
         </div>
 
+        {/* ================= MAP ================= */}
+
         <div className="hero-map">
-          {loading && <div className="map-loading">Loading…</div>}
-          <MapContainer center={center} zoom={13} scrollWheelZoom={false}>
-            <Recenter center={center} radius={radius} />
+          {loading && (
+            <div className="map-loading">
+              Loading…
+            </div>
+          )}
+
+          <MapContainer
+            center={center}
+            zoom={13}
+            scrollWheelZoom={
+              false
+            }
+          >
+            <Recenter
+              center={center}
+              radius={radius}
+            />
+
             <TileLayer
-              attribution='&copy; OpenStreetMap contributors'
+              attribution="&copy; OpenStreetMap contributors"
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {/* User's location marker + 5km search radius ring */}
-            <Marker position={center} icon={userIcon}>
-              <Popup><strong>You are here</strong><br />(test location)</Popup>
-            </Marker>
-            <Circle center={center} radius={radius} pathOptions={{ color: '#0f766e', fillOpacity: 0.05 }} />
 
-            {pharmacies.map((p) => {
-              const coords = p.location?.coordinates;
-              if (!coords) return null;
-              const [lon, lat] = coords;
-              return (
-                <Marker key={p._id} position={[lat, lon]}>
-                  <Popup>
-                    <strong>{p.name}</strong><br />
-                    {p.address}<br />
-                    {p.phone && <span>📞 {p.phone}<br /></span>}
-                    {p.rating && <span>⭐ {p.rating} ({p.ratingCount || 0})</span>}
-                    <br />
-                    <Link to={`/pharmacy/${p._id}`}>View shop & inventory →</Link>
-                    {waLink(p.phone, medicine) && (
-                      <>
-                        <br />
-                        <a href={waLink(p.phone, medicine)} target="_blank" rel="noreferrer">
-                          💬 Ask on WhatsApp
-                        </a>
-                      </>
-                    )}
-                    {p.mapsLink && (
-                      <>
-                        <br />
-                        <a href={p.mapsLink} target="_blank" rel="noreferrer">Directions ↗</a>
-                      </>
-                    )}
-                  </Popup>
-                </Marker>
-              );
-            })}
+            {/* USER LOCATION */}
+
+            <Marker
+              position={
+                center
+              }
+              icon={userIcon}
+            >
+              <Popup>
+                <strong>
+                  You are here
+                </strong>
+
+                <br />
+
+                (test location)
+              </Popup>
+            </Marker>
+
+            <Circle
+              center={center}
+              radius={radius}
+              pathOptions={{
+                color:
+                  '#0f766e',
+                fillOpacity:
+                  0.05,
+              }}
+            />
+
+            {/* PHARMACY MARKERS */}
+
+            {safePharmacies.map(
+              (pharmacy) => {
+                const coords =
+                  pharmacy
+                    ?.location
+                    ?.coordinates;
+
+                if (
+                  !Array.isArray(
+                    coords
+                  ) ||
+                  coords.length <
+                    2
+                ) {
+                  return null;
+                }
+
+                const [
+                  lon,
+                  lat,
+                ] = coords;
+
+                if (
+                  !Number.isFinite(
+                    Number(lat)
+                  ) ||
+                  !Number.isFinite(
+                    Number(lon)
+                  )
+                ) {
+                  return null;
+                }
+
+                const id =
+                  pharmacy._id ||
+                  pharmacy.id;
+
+                return (
+                  <Marker
+                    key={
+                      id ||
+                      `${lat}-${lon}`
+                    }
+                    position={[
+                      Number(
+                        lat
+                      ),
+                      Number(
+                        lon
+                      ),
+                    ]}
+                  >
+                    <Popup>
+                      <strong>
+                        {pharmacy.name ||
+                          'Pharmacy'}
+                      </strong>
+
+                      <br />
+
+                      {pharmacy.address && (
+                        <>
+                          {
+                            pharmacy.address
+                          }
+
+                          <br />
+                        </>
+                      )}
+
+                      {pharmacy.phone && (
+                        <span>
+                          📞{' '}
+                          {
+                            pharmacy.phone
+                          }
+
+                          <br />
+                        </span>
+                      )}
+
+                      {pharmacy.rating && (
+                        <span>
+                          ⭐{' '}
+                          {
+                            pharmacy.rating
+                          }{' '}
+                          (
+                          {pharmacy.ratingCount ||
+                            0}
+                          )
+                        </span>
+                      )}
+
+                      <br />
+
+                      {id && (
+                        <Link
+                          to={`/pharmacy/${id}`}
+                        >
+                          View shop
+                          &amp;
+                          inventory →
+                        </Link>
+                      )}
+
+                      {waLink(
+                        pharmacy.phone,
+                        medicine
+                      ) && (
+                        <>
+                          <br />
+
+                          <a
+                            href={waLink(
+                              pharmacy.phone,
+                              medicine
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            💬 Ask on
+                            WhatsApp
+                          </a>
+                        </>
+                      )}
+
+                      {pharmacy.mapsLink && (
+                        <>
+                          <br />
+
+                          <a
+                            href={
+                              pharmacy.mapsLink
+                            }
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            Directions
+                            ↗
+                          </a>
+                        </>
+                      )}
+                    </Popup>
+                  </Marker>
+                );
+              }
+            )}
           </MapContainer>
         </div>
       </section>
 
-      {error && <div className="error banner">{error}</div>}
+      {/* ================= ERROR ================= */}
 
-      {/* ============ RESULTS / SHOP CARDS ============ */}
+      {error && (
+        <div className="error banner">
+          {error}
+        </div>
+      )}
+
+      {/* ================= RESULTS ================= */}
+
       <section className="shops">
         <div className="shops-head">
           <h2>
@@ -246,88 +1088,279 @@ export default function Home() {
               ? `Shops stocking "${medicine}"`
               : 'All medical shops'}
           </h2>
-          <span className="count-badge">{pharmacies.length} result{pharmacies.length === 1 ? '' : 's'}</span>
+
+          <span className="count-badge">
+            {
+              safePharmacies.length
+            }{' '}
+            result
+            {safePharmacies.length ===
+            1
+              ? ''
+              : 's'}
+          </span>
         </div>
 
-        {pharmacies.length === 0 ? (
+        {safePharmacies.length ===
+        0 ? (
           <div className="empty-state">
-            <p>No pharmacies match your search. Try a different medicine or widen the radius.</p>
+            <p>
+              No pharmacies match
+              your search. Try a
+              different medicine or
+              widen the radius.
+            </p>
           </div>
         ) : (
           <div className="shop-grid">
-            {pharmacies.slice(0, 30).map((p) => (
-              <article key={p._id} className="shop-card">
-                <Link to={`/pharmacy/${p._id}`} className="shop-link">
-                  {p.imageLink ? (
-                    <div className="shop-img" style={{ backgroundImage: `url(${p.imageLink})` }} />
-                  ) : (
-                    <div className="shop-img placeholder">💊</div>
-                  )}
-                </Link>
-                <div className="shop-body">
-                  <div className="shop-top">
-                    <h3><Link to={`/pharmacy/${p._id}`} className="shop-link">{p.name}</Link></h3>
-                    {p.rating && (
-                      <span className="rating-badge">⭐ {p.rating}</span>
-                    )}
-                  </div>
-                  <p className="shop-addr">{p.address}</p>
-                  {p.hours && <p className="shop-hours">🕒 {p.hours}</p>}
-                  <div className="shop-actions">
-                    <Link className="btn primary small" to={`/pharmacy/${p._id}`}>Explore →</Link>
-                    {waLink(p.phone, medicine) && (
-                      <a
-                        className="btn primary small"
-                        style={{ background: '#25D366', borderColor: '#25D366' }}
-                        href={waLink(p.phone, medicine)}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        💬 WhatsApp
-                      </a>
-                    )}
-                    {p.phone && <a className="btn ghost" href={`tel:${p.phone.replace(/[^+\d]/g, '')}`}>📞 Call</a>}
-                  </div>
-                </div>
-              </article>
-            ))}
+            {safePharmacies
+              .slice(0, 30)
+              .map(
+                (
+                  pharmacy
+                ) => {
+                  const id =
+                    pharmacy._id ||
+                    pharmacy.id;
+
+                  return (
+                    <article
+                      key={
+                        id ||
+                        pharmacy.name
+                      }
+                      className="shop-card"
+                    >
+                      {id ? (
+                        <Link
+                          to={`/pharmacy/${id}`}
+                          className="shop-link"
+                        >
+                          {pharmacy.imageLink ? (
+                            <div
+                              className="shop-img"
+                              style={{
+                                backgroundImage: `url(${pharmacy.imageLink})`,
+                              }}
+                            />
+                          ) : (
+                            <div className="shop-img placeholder">
+                              💊
+                            </div>
+                          )}
+                        </Link>
+                      ) : pharmacy.imageLink ? (
+                        <div
+                          className="shop-img"
+                          style={{
+                            backgroundImage: `url(${pharmacy.imageLink})`,
+                          }}
+                        />
+                      ) : (
+                        <div className="shop-img placeholder">
+                          💊
+                        </div>
+                      )}
+
+                      <div className="shop-body">
+                        <div className="shop-top">
+                          <h3>
+                            {id ? (
+                              <Link
+                                to={`/pharmacy/${id}`}
+                                className="shop-link"
+                              >
+                                {pharmacy.name ||
+                                  'Pharmacy'}
+                              </Link>
+                            ) : (
+                              pharmacy.name ||
+                              'Pharmacy'
+                            )}
+                          </h3>
+
+                          {pharmacy.rating && (
+                            <span className="rating-badge">
+                              ⭐{' '}
+                              {
+                                pharmacy.rating
+                              }
+                            </span>
+                          )}
+                        </div>
+
+                        {pharmacy.address && (
+                          <p className="shop-addr">
+                            {
+                              pharmacy.address
+                            }
+                          </p>
+                        )}
+
+                        {pharmacy.hours && (
+                          <p className="shop-hours">
+                            🕒{' '}
+                            {
+                              pharmacy.hours
+                            }
+                          </p>
+                        )}
+
+                        <div className="shop-actions">
+                          {id && (
+                            <Link
+                              className="btn primary small"
+                              to={`/pharmacy/${id}`}
+                            >
+                              Explore →
+                            </Link>
+                          )}
+
+                          {waLink(
+                            pharmacy.phone,
+                            medicine
+                          ) && (
+                            <a
+                              className="btn primary small"
+                              style={{
+                                background:
+                                  '#25D366',
+                                borderColor:
+                                  '#25D366',
+                              }}
+                              href={waLink(
+                                pharmacy.phone,
+                                medicine
+                              )}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              💬
+                              WhatsApp
+                            </a>
+                          )}
+
+                          {pharmacy.phone && (
+                            <a
+                              className="btn ghost"
+                              href={`tel:${String(
+                                pharmacy.phone
+                              ).replace(
+                                /[^+\d]/g,
+                                ''
+                              )}`}
+                            >
+                              📞 Call
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                }
+              )}
           </div>
         )}
-        {pharmacies.length > 30 && (
-          <p className="muted" style={{ textAlign: 'center', marginTop: 16 }}>
-            Showing first 30 of {pharmacies.length}. Refine your search to narrow.
+
+        {safePharmacies.length >
+          30 && (
+          <p
+            className="muted"
+            style={{
+              textAlign:
+                'center',
+              marginTop: 16,
+            }}
+          >
+            Showing first 30 of{' '}
+            {
+              safePharmacies.length
+            }
+            . Refine your search
+            to narrow.
           </p>
         )}
       </section>
 
-      {/* ============ FEATURES ============ */}
+      {/* ================= FEATURES ================= */}
+
       <section className="features">
-        <h2>Why Dawa-Find?</h2>
+        <h2>
+          Why Dawa-Find?
+        </h2>
+
         <div className="feature-grid">
           <div className="feature-card">
-            <div className="icon">📍</div>
-            <h3>Nearby, always</h3>
-            <p>Auto-detect your location and see every pharmacy within a chosen radius.</p>
+            <div className="icon">
+              📍
+            </div>
+
+            <h3>
+              Nearby, always
+            </h3>
+
+            <p>
+              Auto-detect your
+              location and see every
+              pharmacy within a
+              chosen radius.
+            </p>
           </div>
+
           <div className="feature-card">
-            <div className="icon">💊</div>
-            <h3>Real-time SKU search</h3>
-            <p>Search by medicine name or brand — we show which shops actually stock it.</p>
+            <div className="icon">
+              💊
+            </div>
+
+            <h3>
+              Real-time SKU search
+            </h3>
+
+            <p>
+              Search by medicine
+              name or brand — we
+              show which shops
+              actually stock it.
+            </p>
           </div>
+
           <div className="feature-card">
-            <div className="icon">🗺️</div>
-            <h3>One-tap directions</h3>
-            <p>Every pin opens directly in Google Maps for turn-by-turn navigation.</p>
+            <div className="icon">
+              🗺️
+            </div>
+
+            <h3>
+              One-tap directions
+            </h3>
+
+            <p>
+              Every pin opens
+              directly in Google
+              Maps for turn-by-turn
+              navigation.
+            </p>
           </div>
+
           <div className="feature-card">
-            <div className="icon">⭐</div>
-            <h3>Ratings & hours</h3>
-            <p>Compare open hours and ratings before you head out.</p>
+            <div className="icon">
+              ⭐
+            </div>
+
+            <h3>
+              Ratings &amp; hours
+            </h3>
+
+            <p>
+              Compare open hours
+              and ratings before
+              you head out.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* ============ FOOTER ============ */}
+      {/* ================= FOOTER ================= */}
+
       <Footer />
     </main>
   );
